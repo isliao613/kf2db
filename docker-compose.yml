@@ -27,7 +27,7 @@ services:
       - "7000:7000"
       - "9000:9000"
       - "15433:15433"
-    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=true", "--listen=0.0.0.0" ]
+    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=true", "--advertise_address=yugabyte" ]
 
   connect:
     image: isliao613/kafka-connect:1.0.6

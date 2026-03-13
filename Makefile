@@ -1,13 +1,14 @@
 # Kafka to YugabyteDB Sync Toolkit Makefile
 
-.PHONY: help setup infra-base connector-up connector-status run run-small verify-db clean
+.PHONY: help setup infra-base init-db connector-up connector-status run run-small verify-db clean
 
 # Default: help
 help:
 	@echo "Available commands:"
 	@echo "  make infra-base     - Start Kafka, YugabyteDB, Connect, Console"
+	@echo "  make init-db        - Manually create table in YugabyteDB"
 	@echo "  make connector-up   - Submit JDBC Sink Connector to Kafka Connect"
-	@echo "  make connector-status - Check connector status (requires jq)"
+	@echo "  make connector-status - Check connector status"
 	@echo "  make run            - Run test (100k msgs, max speed)"
 	@echo "  make run-small      - Run test (10 msgs) for quick verification"
 	@echo "  make verify-db      - Check row count in YugabyteDB"
@@ -16,6 +17,7 @@ help:
 # Setup: install dependencies
 setup:
 	pip install -r requirements.txt
+	chmod +x init_db.sh
 
 # Infrastructure: full cluster in KRaft mode
 infra-base:
@@ -23,11 +25,15 @@ infra-base:
 	@echo "Waiting for services to be ready (30s)..."
 	@sleep 30
 
+# Database initialization
+init-db:
+	./init_db.sh
+
 clean:
 	docker compose down -v --remove-orphans
 
 # Connector management
-connector-up:
+connector-up: init-db
 	curl -i -X POST -H "Content-Type: application/json" --data @connector.json http://localhost:8083/connectors
 
 connector-status:
@@ -42,6 +48,6 @@ run-small:
 
 # Database verification
 verify-db:
-	@echo "Checking YSQL connectivity..."
-	@docker exec yugabyte bash -c "until bin/ysqlsh -h 127.0.0.1 -U yugabyte -c 'select 1' > /dev/null 2>&1; do echo 'Waiting for YSQL...'; sleep 2; done"
-	@docker exec yugabyte bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_orders;"
+	@echo "Checking YugabyteDB row count..."
+	@HOST=$$(docker exec yugabyte hostname -i); \
+	docker exec yugabyte bin/ysqlsh -h $$HOST -U yugabyte -d yugabyte -c "SELECT count(*) FROM public.test_orders;"

@@ -19,7 +19,7 @@ class FastProducer:
         self.args = args
         self.raw_template = self._load_template()
         self.is_structured = False
-        self.key_tmpl = '{"ID": "{{id}}"}'
+        self.key_tmpl = '{"ID": {{id}}}'
         self.val_tmpl = self.raw_template
         self.headers_tmpl = None
         
@@ -32,44 +32,38 @@ class FastProducer:
         return self.args.message or generate_random_string(self.args.message_size)
 
     def _prepare_templates(self):
-        """Identifies key, value, and headers even if JSON has unquoted placeholders."""
-        # Create a 'safe' version of the template to test for structure
-        safe_json = self.raw_template.replace("{{id}}", "0").replace("{{timestamp}}", "0")
+        ID_VAL = "123456789"
+        TS_VAL = "2099-01-01 00:00:00.000000000000"
+        
+        safe_json = self.raw_template.replace("{{id}}", ID_VAL).replace("{{timestamp}}", TS_VAL)
         
         try:
-            data = json.loads(safe_json)
-            if isinstance(data, dict) and any(k in data for k in ["key", "value", "headers"]):
+            full_data = json.loads(safe_json)
+            if isinstance(full_data, dict) and any(k in full_data for k in ["key", "value", "headers"]):
                 self.is_structured = True
                 
-                # We need to extract the raw strings for key, value, and headers from the original template
-                # To do this safely while preserving placeholders, we parse the 'safe' version 
-                # but then use the structure to find what to extract.
-                
-                # For high performance, we re-serialize the SUB-OBJECTS from the 'safe' parse
-                # but then put the placeholders back. This is safer than regex.
-                
-                full_data = json.loads(safe_json)
-                
-                # Function to convert safe-serialized back to placeholder-serialized
-                def to_tmpl(obj):
-                    s = json.dumps(obj)
-                    # This is a bit of a hack but works for standard templates
-                    # It assumes the user didn't have literal "0" strings they wanted to keep
-                    return s.replace('"0"', '"{{timestamp}}"').replace('0', '{{id}}')
+                def to_tmpl(obj, force_json=False):
+                    if force_json:
+                        s = json.dumps(obj)
+                    elif isinstance(obj, (dict, list)):
+                        s = json.dumps(obj)
+                    else:
+                        s = str(obj)
+                    return s.replace(TS_VAL, '{{timestamp}}').replace(ID_VAL, '{{id}}')
 
                 if "key" in full_data:
-                    self.key_tmpl = to_tmpl(full_data["key"])
+                    self.key_tmpl = to_tmpl(full_data["key"], force_json=True)
                 
                 if "value" in full_data:
-                    self.val_tmpl = to_tmpl(full_data["value"])
+                    # Keep value as JSON string for the producer
+                    self.val_tmpl = to_tmpl(full_data["value"], force_json=True)
                 else:
-                    self.val_tmpl = to_tmpl(full_data)
+                    self.val_tmpl = self.raw_template
                 
                 if "headers" in full_data:
-                    self.headers_tmpl = full_data["headers"]
-
+                    # Headers are NOT JSON serialized strings, they are raw strings
+                    self.headers_tmpl = {k: to_tmpl(v, force_json=False) for k, v in full_data["headers"].items()}
         except json.JSONDecodeError:
-            # If we can't parse it even with safe values, treat the whole thing as value
             self.is_structured = False
 
     def get_data(self, index):
@@ -77,13 +71,13 @@ class FastProducer:
         ts_str = now.strftime('%Y-%m-%d %H:%M:%S.%f') + '000000'
         idx = str(index)
         
-        # Apply placeholders
         key = self.key_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)
         value = self.val_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)
         
         headers = []
         if self.headers_tmpl:
-            headers = [(k, str(v).replace("{{id}}", idx).replace("{{timestamp}}", ts_str)) 
+            # We don't use str(v) here because v is already a string template with placeholders
+            headers = [(k, v.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)) 
                        for k, v in self.headers_tmpl.items()]
         
         return key, value, headers
@@ -104,22 +98,14 @@ def run_producer(args):
     
     print(f"Starting production to topic '{args.topic}'...")
     total_start = time.time()
-    
     for iteration in range(args.iterations):
-        print(f"--- Iteration {iteration + 1}/{args.iterations} ---")
         iter_start = time.time()
-        
         for i in range(args.num_messages):
             key, value, headers = fast_data.get_data(i + (iteration * args.num_messages))
             producer.produce(args.topic, key=key, value=value, headers=headers)
-            if i % 10000 == 0:
-                producer.poll(0)
-
+            if i % 10000 == 0: producer.poll(0)
         producer.flush()
         print(f"Iteration complete. Rate: {args.num_messages / (time.time() - iter_start):.2f} msg/sec")
-
-    overall_time = time.time() - total_start
-    print(f"\nFinal Throughput: {(args.num_messages * args.iterations) / overall_time:.2f} msg/sec")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

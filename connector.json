@@ -10,19 +10,20 @@
     "dialect.name": "PostgreSqlDatabaseDialect",
     "insert.mode": "upsert",
     "pk.mode": "record_key",
-    "pk.fields": "ID",
+    "pk.fields": "id",
     "table.name.format": "test_orders",
     "delete.enabled": "true",
-    "auto.create": "true",
-    "auto.evolve": "true",
+    "auto.create": "false",
+    "auto.evolve": "false",
     "key.converter": "org.apache.kafka.connect.json.JsonConverter",
     "key.converter.schemas.enable": "false",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter.schemas.enable": "false",
     "transforms": "iidrToJdbc",
     "transforms.iidrToJdbc.type": "com.example.debezium.smt.IidrToJdbcSinkTransform",
-    "transforms.iidrToJdbc.table.filter": "TEST_ORDERS",
-    "transforms.iidrToJdbc.case.format": "lower",
-    "transforms.iidrToJdbc.type.overrides": "created_at:timestamp,updated_at:timestamp,order_date:date,order_time:time"
+    "transforms.iidrToJdbc.table.name.filter": "TEST_ORDERS",
+    "transforms.iidrToJdbc.table.name.case": "lower",
+    "transforms.iidrToJdbc.field.name.case": "lower",
+    "transforms.iidrToJdbc.field.type.overrides": "created_at:timestamp,updated_at:timestamp,order_date:date,order_time:time"
   }
 }
