@@ -1,81 +1,87 @@
-# Kafka Performance Testing Toolkit
+# Kafka to YugabyteDB Sync & Performance Toolkit
 
-This toolkit provides a high-performance Kafka environment (KRaft mode) and a customizable Python producer script designed for benchmarking and throughput testing.
+This toolkit provides a complete pipeline to test high-performance data ingestion from Kafka into YugabyteDB using a customized Kafka Connect JDBC Sink.
 
-## Prerequisites
+## Architecture
+- **Kafka**: KRaft mode (no Zookeeper).
+- **YugabyteDB**: High-performance distributed SQL database.
+- **Kafka Connect**: Using `isliao613/kafka-connect:1.0.6` with custom SMTs.
+- **Redpanda Console**: Web UI for monitoring topics, messages, and connectors.
 
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
-- Python 3.7+
-- (Optional) A Python virtual environment
+---
 
-## 1. Start the Kafka Environment
+## 1. Setup & Infrastructure
 
-Deploy the Kafka cluster (KRaft Broker and Redpanda Console) using Docker Compose:
-
+### Start All Services
 ```bash
 make infra-base
 ```
+*Note: Wait ~30-45 seconds for YugabyteDB and Kafka Connect to initialize.*
 
-### Accessing the UI
-Redpanda Console provides a web interface to visualize topics and messages.
-- **URL**: [http://localhost:8080](http://localhost:8080)
-- **Features**: Monitor partition distribution and message headers in real-time.
-
-## 2. Install Dependencies
-
+### Install Python Dependencies
 ```bash
 make setup
 ```
 
+---
+
+## 2. Configure the Sink Connector
+
+Submit the JDBC Sink connector to Kafka Connect. This will target the `iidr.CDC.TEST_ORDERS` topic and sync it to the `test_orders` table in YugabyteDB.
+
+```bash
+make connector-up
+```
+
+### Check Status
+```bash
+make connector-status
+```
+Ensure the connector and tasks are in the `RUNNING` state.
+
+---
+
 ## 3. Run Performance Tests
 
-### Basic Usage (Max Speed)
+The producer uses a structured `template.json` to simulate CDC (Change Data Capture) messages.
+
+### Produce 100,000 Messages
 ```bash
 make run
 ```
 
-### Advanced Usage (Rate Limiting & Partitioning)
-To test a specific throughput and force partitioning based on a nested field (e.g., `user_id` inside the `value` object):
+### Produce with Specific Rate (e.g., 500 msg/sec)
 ```bash
-python3 producer.py \
-  --num-messages 10000 \
-  --rate 500 \
-  --partition-key "value.payload.user_id" \
-  --message-file template.json
+python3 producer.py --topic iidr.CDC.TEST_ORDERS --rate 500 --num-messages 10000 --message-file template.json
 ```
 
-## CLI Arguments
+---
 
-| Argument | Default | Description |
-| :--- | :--- | :--- |
-| `--bootstrap-servers` | `localhost:9092` | Kafka broker addresses. |
-| `--topic` | `perf-test` | The Kafka topic to produce to. |
-| `--num-messages` | `100000` | Messages produced **per iteration**. |
-| `--iterations` | `1` | Number of times to repeat the production cycle. |
-| `--rate` | `0` | Target messages per second (**0 = max speed**). |
-| `--partition-key` | `None` | Dot-separated path to a field in the template to use as the Kafka Key (e.g. `value.user_id`). |
-| `--message-file` | `None` | Path to a structured JSON template file. |
-| `--batch-size` | `16384` | Maximum number of messages per batch. |
-| `--linger-ms` | `10` | Milliseconds to wait before sending a batch. |
+## 4. Verify Data in YugabyteDB
 
-## 4. Customizing the Message Template
-
-The `template.json` file allows you to define the **Key**, **Value**, and **Headers** for each message. Use `{{id}}` and `{{timestamp}}` as dynamic placeholders.
-
-```json
-{
-  "key": { "user_id": {{id}}, "type": "USER_ACTION" },
-  "headers": { "source": "perf-test", "trace_id": "trace-{{id}}" },
-  "value": {
-    "id": {{id}},
-    "ts": "{{timestamp}}",
-    "payload": { "user_id": {{id}}, "msg": "Structured test message" }
-  }
-}
+Check the row count in the `test_orders` table to confirm synchronization:
+```bash
+make verify-db
 ```
+
+Access the YugabyteDB UI at [http://localhost:7000](http://localhost:7000) or the Redpanda Console at [http://localhost:8080](http://localhost:8080).
+
+---
 
 ## 5. Cleanup
 
+Stop and remove all containers, volumes, and networks:
 ```bash
 make clean
 ```
+
+---
+
+## Configuration Reference
+
+| File | Description |
+| :--- | :--- |
+| `docker-compose.yml` | Full infrastructure definition. |
+| `connector.json` | Sink connector config (Dialect, Table Format, SMTs). |
+| `template.json` | Structured message template (Key, Value, Headers). |
+| `producer.py` | High-performance Python producer with rate limiting. |

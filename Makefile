@@ -1,51 +1,47 @@
-# Kafka Performance Testing Makefile
+# Kafka to YugabyteDB Sync Toolkit Makefile
 
-.PHONY: help setup infra-base infra-up infra-down infra-clean run run-rate run-partition run-small clean
+.PHONY: help setup infra-base connector-up connector-status run run-small verify-db clean
 
-# Show help by default
+# Default: help
 help:
 	@echo "Available commands:"
-	@echo "  make infra-base     - Start Kafka (KRaft) and Redpanda Console"
-	@echo "  make run            - Run test (100k msgs, default keys)"
-	@echo "  make run-rate       - Run test (1k msgs, 100 msg/sec)"
-	@echo "  make run-partition  - Run test partitioning by nested field (value.payload.user_id)"
-	@echo "  make run-small      - Run a quick test (100 msgs)"
-	@echo "  make clean          - Stop containers and remove all volumes"
+	@echo "  make infra-base     - Start Kafka, YugabyteDB, Connect, Console"
+	@echo "  make connector-up   - Submit JDBC Sink Connector to Kafka Connect"
+	@echo "  make connector-status - Check connector status (requires jq)"
+	@echo "  make run            - Run test (100k msgs, max speed)"
+	@echo "  make run-small      - Run test (10 msgs) for quick verification"
+	@echo "  make verify-db      - Check row count in YugabyteDB"
+	@echo "  make clean          - Stop and remove all containers and volumes"
 
 # Setup: install dependencies
 setup:
 	pip install -r requirements.txt
 
-# Infrastructure management
+# Infrastructure: full cluster in KRaft mode
 infra-base:
 	docker compose up -d
-	@echo "Waiting for Kafka to be ready..."
-	@sleep 10
-	@echo "Infrastructure is up. UI: http://localhost:8080"
+	@echo "Waiting for services to be ready (30s)..."
+	@sleep 30
 
-infra-up: infra-base
-
-infra-down:
-	docker compose stop
-
-infra-clean:
+clean:
 	docker compose down -v --remove-orphans
 
-clean: infra-clean
+# Connector management
+connector-up:
+	curl -i -X POST -H "Content-Type: application/json" --data @connector.json http://localhost:8083/connectors
 
-# Execution management
+connector-status:
+	@curl -s http://localhost:8083/connectors/iidr-jdbc-sink-yb/status | python3 -m json.tool
+
+# Execution: performance tests
 run:
-	python3 producer.py --num-messages 100000 --message-file template.json
-
-run-rate:
-	python3 producer.py --num-messages 100000 --iterations 5 --rate 100000 --message-file template.json
-
-run-partition:
-	python3 producer.py --num-messages 100000 --rate 100000 --partition-key "value.payload.user_id" --message-file template.json
+	python3 producer.py --topic iidr.CDC.TEST_ORDERS --num-messages 100000 --message-file template.json
 
 run-small:
-	python3 producer.py --num-messages 100000 --message-file template.json --topic verify-topic
+	python3 producer.py --topic iidr.CDC.TEST_ORDERS --num-messages 10 --message-file template.json
 
-# Helper to remove local caches
-local-clean:
-	rm -rf __pycache__
+# Database verification
+verify-db:
+	@echo "Checking YSQL connectivity..."
+	@docker exec yugabyte bash -c "until bin/ysqlsh -h 127.0.0.1 -U yugabyte -c 'select 1' > /dev/null 2>&1; do echo 'Waiting for YSQL...'; sleep 2; done"
+	@docker exec yugabyte bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_orders;"

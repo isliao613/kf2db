@@ -1,19 +1,19 @@
 {
   "key": {
-    "user_id": {{id}},
-    "type": "USER_ACTION"
+    "ID": {{id}}
   },
   "headers": {
-    "source": "perf-test-producer",
-    "trace_id": "trace-{{id}}",
-    "timestamp": "{{timestamp}}"
+    "TableName": "TEST_ORDERS",
+    "A_ENTTYP": "PT",
+    "A_TIMSTAMP": "{{timestamp}}"
   },
   "value": {
-    "id": {{id}},
-    "ts": "{{timestamp}}",
-    "payload": {
-      "message": "This is a performance test message with a JSON key.",
-      "data": "Simulating a structured key-value message."
-    }
+    "ORDER_NAME": "order_{{id}}",
+    "AMOUNT": 250.50,
+    "STATUS": "COMPLETED",
+    "CREATED_AT": "{{timestamp}}",
+    "UPDATED_AT": "{{timestamp}}",
+    "ORDER_DATE": "2024-03-21",
+    "ORDER_TIME": "10:30:00"
   }
 }

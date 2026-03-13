@@ -1,0 +1,8 @@
+kafka:
+  brokers: ["kafka:29092"]
+
+kafkaConnect:
+  enabled: true
+  clusters:
+    - name: "local-connect"
+      url: "http://connect:8083"
