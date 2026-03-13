@@ -1,0 +1,19 @@
+{
+  "key": {
+    "user_id": {{id}},
+    "type": "USER_ACTION"
+  },
+  "headers": {
+    "source": "perf-test-producer",
+    "trace_id": "trace-{{id}}",
+    "timestamp": "{{timestamp}}"
+  },
+  "value": {
+    "id": {{id}},
+    "ts": "{{timestamp}}",
+    "payload": {
+      "message": "This is a performance test message with a JSON key.",
+      "data": "Simulating a structured key-value message."
+    }
+  }
+}
