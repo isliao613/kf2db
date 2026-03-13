@@ -64,7 +64,7 @@ Check the row count in the `test_orders` table to confirm synchronization:
 make verify-db
 ```
 
-Access the YugabyteDB UI at [http://localhost:7000](http://localhost:7000) or the Redpanda Console at [http://localhost:8080](http://localhost:8080).
+Access the YugabyteDB UI at [http://localhost:15433](http://localhost:15433) or the Redpanda Console at [http://localhost:8080](http://localhost:8080).
 
 ---
 

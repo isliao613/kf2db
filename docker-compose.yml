@@ -25,7 +25,9 @@ services:
     ports:
       - "5433:5433"
       - "7000:7000"
-    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=false" ]
+      - "9000:9000"
+      - "15433:15433"
+    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=true", "--listen=0.0.0.0" ]
 
   connect:
     image: isliao613/kafka-connect:1.0.6
@@ -64,4 +66,3 @@ services:
       - ./console-config.yaml:/etc/redpanda/console-config.yaml
     environment:
       CONFIG_FILEPATH: /etc/redpanda/console-config.yaml
-
