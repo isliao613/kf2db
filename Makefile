@@ -2,16 +2,18 @@
 
 .PHONY: help setup infra-base init-db connector-up connector-status run run-small verify-db clean
 
+TABLES = orders products users customers inventory
+
 # Default: help
 help:
-	@echo "Available commands:"
+	@echo "Available commands (Supports 5 tables: $(TABLES)):"
 	@echo "  make setup          - Install dependencies and set permissions"
 	@echo "  make infra-base     - Start Kafka, YugabyteDB, Connect, Console"
-	@echo "  make connector-up   - Manually create table and submit Sink Connector"
-	@echo "  make connector-status - Check health of the connector and tasks"
-	@echo "  make run            - Produce 100,000 messages (max speed)"
-	@echo "  make run-small      - Produce 10 messages (for verification)"
-	@echo "  make verify-db      - Robust row count check in YugabyteDB"
+	@echo "  make connector-up   - Manually create 5 tables and submit 5 Sink Connectors"
+	@echo "  make connector-status - Check health of all 5 connectors"
+	@echo "  make run            - Produce 100,000 messages for each of the 5 tables"
+	@echo "  make run-small      - Produce 10 messages for each of the 5 tables"
+	@echo "  make verify-db      - Row count check for all 5 tables in YugabyteDB"
 	@echo "  make clean          - Stop and remove all containers and volumes"
 
 # Setup: install dependencies
@@ -25,30 +27,65 @@ infra-base:
 	@echo "Waiting for services to be ready (45s)..."
 	@sleep 45
 
-# Database initialization (Manual table creation)
+# Database initialization (Manual table creation for all 5 tables)
 init-db:
-	./init_db.sh
+	@for table in $(TABLES); do \
+		./init_db.sh test_$$table; \
+	done
 
-# Connector management
+# Connector management (Generates and submits 5 connectors)
 connector-up: init-db
-	@echo "Submitting connector to Kafka Connect..."
-	@curl -i -X POST -H "Content-Type: application/json" --data @connector.json http://localhost:8083/connectors
+	@echo "Submitting 5 connectors to Kafka Connect..."
+	@for table in $(TABLES); do \
+		UPPER_TABLE=$$(echo $$table | tr '[:lower:]' '[:upper:]'); \
+		sed -e "s/iidr-jdbc-sink-yb/iidr-jdbc-sink-$$table/g" \
+			-e "s/iidr\.CDC\.TEST_ORDERS/iidr.CDC.TEST_$$UPPER_TABLE/g" \
+			-e "s/test_orders/test_$$table/g" \
+			-e "s/TEST_ORDERS/TEST_$$UPPER_TABLE/g" \
+			connector.json > connector_$$table.json; \
+		curl -s -i -X POST -H "Content-Type: application/json" --data @connector_$$table.json http://localhost:8083/connectors > /dev/null; \
+		rm connector_$$table.json; \
+		echo "Connector for $$table submitted."; \
+	done
 
 connector-status:
-	@curl -s http://localhost:8083/connectors/iidr-jdbc-sink-yb/status | python3 -m json.tool
+	@for table in $(TABLES); do \
+		echo "--- Status for iidr-jdbc-sink-$$table ---"; \
+		curl -s http://localhost:8083/connectors/iidr-jdbc-sink-$$table/status | python3 -m json.tool || echo "Not found"; \
+	done
 
-# Execution: performance tests
+# Execution: performance tests for all 5 tables
 run:
-	python3 producer.py --num-messages 100000 --message-file template.json
+	@for table in $(TABLES); do \
+		UPPER_TABLE=$$(echo $$table | tr '[:lower:]' '[:upper:]'); \
+		sed -e "s/TEST_ORDERS/TEST_$$UPPER_TABLE/g" \
+			-e "s/item_{{id}}/$${table}_{{id}}/g" \
+			template.json > template_$$table.json; \
+		echo "Producing 100,000 messages to iidr.CDC.TEST_$$UPPER_TABLE..."; \
+		python3 producer.py --num-messages 100000 --topic iidr.CDC.TEST_$$UPPER_TABLE --message-file template_$$table.json; \
+		rm template_$$table.json; \
+	done
 
 run-small:
-	python3 producer.py --num-messages 10 --message-file template.json
+	@for table in $(TABLES); do \
+		UPPER_TABLE=$$(echo $$table | tr '[:lower:]' '[:upper:]'); \
+		sed -e "s/TEST_ORDERS/TEST_$$UPPER_TABLE/g" \
+			-e "s/item_{{id}}/$${table}_{{id}}/g" \
+			template.json > template_$$table.json; \
+		echo "Producing 10 messages to iidr.CDC.TEST_$$UPPER_TABLE..."; \
+		python3 producer.py --num-messages 10 --topic iidr.CDC.TEST_$$UPPER_TABLE --message-file template_$$table.json; \
+		rm template_$$table.json; \
+	done
 
-# Database verification (Dynamically resolves container IP)
+# Database verification
 verify-db:
-	@echo "Checking YugabyteDB row count..."
+	@echo "Checking YugabyteDB row counts..."
 	@HOST=$$(docker exec yugabyte hostname -i); \
-	docker exec yugabyte bin/ysqlsh -h $$HOST -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_orders;"
+	for table in $(TABLES); do \
+		echo "Table test_$$table:"; \
+		docker exec yugabyte bin/ysqlsh -h $$HOST -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_$$table;"; \
+	done
 
 clean:
 	docker compose down -v --remove-orphans
+	rm -f connector_*.json template_*.json

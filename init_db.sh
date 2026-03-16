@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "Initializing YugabyteDB table with lowercase columns..."
+TABLE_NAME=${1:-test_orders}
+
+echo "Initializing YugabyteDB table '$TABLE_NAME' with lowercase columns..."
 
 # Connect via container IP
 HOST=$(docker exec yugabyte hostname -i)
@@ -12,10 +14,10 @@ docker exec yugabyte bash -c "until bin/ysqlsh -h $HOST -U yugabyte -c 'select 1
 
 # Create table with lowercase columns
 docker exec yugabyte bin/ysqlsh -h $HOST -U yugabyte -d yugabyte -c "
-DROP TABLE IF EXISTS test_orders;
-CREATE TABLE test_orders (
+DROP TABLE IF EXISTS $TABLE_NAME;
+CREATE TABLE $TABLE_NAME (
     id BIGINT PRIMARY KEY,
-    order_name TEXT,
+    name TEXT,
     amount DECIMAL,
     status TEXT,
     created_at TIMESTAMP,
@@ -24,4 +26,4 @@ CREATE TABLE test_orders (
     order_time TIME
 );"
 
-echo "Table 'test_orders' created successfully with lowercase columns."
+echo "Table '$TABLE_NAME' created successfully."

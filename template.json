@@ -8,7 +8,7 @@
     "A_TIMSTAMP": "{{timestamp}}"
   },
   "value": {
-    "ORDER_NAME": "order_{{id}}",
+    "NAME": "item_{{id}}",
     "AMOUNT": 250.50,
     "STATUS": "COMPLETED",
     "CREATED_AT": "{{timestamp}}",
