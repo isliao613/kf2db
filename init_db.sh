@@ -18,10 +18,12 @@ CREATE TABLE test_orders (
     order_name TEXT,
     amount DECIMAL,
     status TEXT,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
     order_date DATE,
-    order_time TIME
+    order_time TIME,
+    connector_received_at TIMESTAMPTZ,
+    db_received_at TIMESTAMPTZ DEFAULT (clock_timestamp() AT TIME ZONE 'UTC')
 );"
 
 echo "Table 'test_orders' created successfully with lowercase columns."

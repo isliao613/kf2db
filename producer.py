@@ -61,7 +61,7 @@ class FastProducer:
             self.is_structured = False
 
     def get_data(self, index):
-        now = datetime.now()
+        now = datetime.utcnow()
         ts_str = now.strftime('%Y-%m-%d %H:%M:%S.%f') + '000000'
         idx = str(index)
         

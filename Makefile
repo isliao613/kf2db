@@ -48,7 +48,8 @@ run-small:
 verify-db:
 	@echo "Checking YugabyteDB row count..."
 	@HOST=$$(docker exec yugabyte hostname -i); \
-	docker exec yugabyte bin/ysqlsh -h $$HOST -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_orders;"
+	docker exec yugabyte bin/ysqlsh -h $$HOST -U yugabyte -d yugabyte -c "SELECT count(*) FROM test_orders;" \ 
+	python3 analyze_latency.py
 
 clean:
 	docker compose down -v --remove-orphans
