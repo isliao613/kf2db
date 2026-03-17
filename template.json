@@ -3,7 +3,7 @@
     "ID": {{id}}
   },
   "headers": {
-    "TableName": "TEST_ORDERS",
+    "TableName": "{{table_name}}",
     "A_ENTTYP": "PT",
     "A_TIMSTAMP": "{{timestamp}}"
   },
