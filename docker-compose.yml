@@ -27,7 +27,7 @@ services:
       - "7000:7000"
       - "9000:9000"
       - "15433:15433"
-    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=true", "--advertise_address=yugabyte" ]
+    command: [ "bin/yugabyted", "start", "--daemon=false", "--ui=true", "--advertise_address=yugabyte", "--tserver_flags=ysql_max_connections=1000,memstore_size_mb=128,yb_num_shards_per_tserver=24,rocksdb_compact_flush_rate_limit_bytes_per_sec=1048576000" ]
 
   connect:
     image: isliao613/kafka-connect:1.0.6

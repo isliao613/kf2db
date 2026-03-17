@@ -12,6 +12,7 @@
     "pk.mode": "record_key",
     "pk.fields": "id",
     "table.name.format": "test_orders",
+    "batch.size": "5000",
     "delete.enabled": "true",
     "auto.create": "false",
     "auto.evolve": "false",

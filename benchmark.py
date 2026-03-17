@@ -40,7 +40,7 @@ CREATE TABLE {table_name} (
     kafka_at TIMESTAMP,
     consumer_at TIMESTAMP,
     yb_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-); """
+) SPLIT INTO 24 TABLETS; """
         if with_trigger:
             sql += f"""
 CREATE OR REPLACE FUNCTION update_timestamp_{i}() RETURNS TRIGGER AS $$
@@ -56,6 +56,18 @@ FOR EACH ROW EXECUTE FUNCTION update_timestamp_{i}();
     # Run SQL via ysqlsh
     cmd = f"docker exec yugabyte bin/ysqlsh -h {ip} -U yugabyte -d yugabyte -c \"{sql}\""
     run_command(cmd)
+    
+    # Wait for tables to be ready
+    print("Verifying table creation...")
+    for i in range(num_tables):
+        table_name = f"test_orders_{i}"
+        while True:
+            out, _ = run_command(f"docker exec yugabyte bin/ysqlsh -h {ip} -U yugabyte -d yugabyte -t -c \"SELECT to_regclass('public.{table_name}')\"")
+            if out.strip() == table_name:
+                break
+            print(f"Waiting for table {table_name}...")
+            time.sleep(1)
+            
     print("Database setup complete.")
 
 def setup_connectors(num_tables):
@@ -64,10 +76,13 @@ def setup_connectors(num_tables):
     stdout, _ = run_command("curl -s http://localhost:8083/connectors")
     try:
         connectors = json.loads(stdout)
-        for c in connectors:
-            run_command(f"curl -s -X DELETE http://localhost:8083/connectors/{c}")
-    except:
-        pass
+        if connectors:
+            print(f"Deleting {len(connectors)} existing connectors...")
+            for c in connectors:
+                run_command(f"curl -s -X DELETE http://localhost:8083/connectors/{c}")
+            time.sleep(5) # Wait for cleanup
+    except Exception as e:
+        print(f"Cleanup warning: {e}")
 
     # Use a single connector for all topics or one per topic? 
     # Usually one per topic is easier to manage for benchmarks.
@@ -84,6 +99,7 @@ def setup_connectors(num_tables):
         config["config"]["topics"] = topic_name
         config["config"]["table.name.format"] = table_name
         config["config"]["tasks.max"] = "32"
+        config["config"]["batch.size"] = "5000"
         config["config"]["transforms.iidrToJdbc.table.name.filter"] = f"TEST_ORDERS_{i}"
         
         print(f"DEBUG: Submitting connector {config['name']} with tasks.max={config['config']['tasks.max']}")
@@ -205,8 +221,24 @@ def main():
     setup_connectors(args.num_tables)
     
     # 3. Wait for connectors to be ready
-    print("Waiting 10s for connectors to initialize...")
-    time.sleep(10)
+    print("Waiting for connectors to be fully RUNNING...")
+    for i in range(args.num_tables):
+        connector_name = f"jdbc-sink-test_orders_{i}"
+        max_retries = 30
+        while max_retries > 0:
+            status_out, _ = run_command(f"curl -s http://localhost:8083/connectors/{connector_name}/status")
+            try:
+                status = json.loads(status_out)
+                conn_state = status.get('connector', {}).get('state')
+                tasks = status.get('tasks', [])
+                if conn_state == 'RUNNING' and tasks and all(t.get('state') == 'RUNNING' for t in tasks):
+                    print(f"Connector {connector_name} is READY.")
+                    break
+            except:
+                pass
+            print(f"Waiting for {connector_name}... ({max_retries}s remaining)")
+            time.sleep(2)
+            max_retries -= 1
     
     # 4. Run Producers in parallel
     manager = multiprocessing.Manager()
@@ -223,8 +255,40 @@ def main():
     for p in processes:
         p.join()
     
-    print("All producers finished. Waiting 15s for sink to catch up...")
-    time.sleep(15)
+    total_expected = args.num_producers * args.messages_per_producer
+    print(f"All producers finished. Sent {total_expected} messages.")
+    print("Waiting for Kafka Connect Sink to synchronize all data to YugabyteDB...")
+    
+    ip = get_yugabyte_ip()
+    last_count = -1
+    stable_count_iterations = 0
+    
+    while True:
+        current_total = 0
+        for i in range(args.num_tables):
+            table_name = f"test_orders_{i}"
+            count_out, _ = run_command(f"docker exec yugabyte bin/ysqlsh -h {ip} -U yugabyte -d yugabyte -t -c \"SELECT count(*) FROM {table_name}\"")
+            current_total += int(count_out.strip()) if count_out.strip() else 0
+        
+        lag = total_expected - current_total
+        progress = (current_total / total_expected) * 100 if total_expected > 0 else 100
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Progress: {current_total}/{total_expected} ({progress:.2f}%) | Lag: {lag}")
+        
+        if current_total >= total_expected:
+            print("All messages successfully synchronized.")
+            break
+            
+        if current_total == last_count:
+            stable_count_iterations += 1
+        else:
+            stable_count_iterations = 0
+            
+        if stable_count_iterations >= 12: # 1 minute of no progress
+            print("Warning: Row count has not increased for 60 seconds. Proceeding to analysis...")
+            break
+            
+        last_count = current_total
+        time.sleep(5)
     
     # 5. Analyze and Generate Report
     analyze_results(args.num_tables, args, producers_summary)
