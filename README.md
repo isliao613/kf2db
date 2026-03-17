@@ -57,11 +57,7 @@ make run
 ### Customizable Production
 Use `producer.py` for specific rate limiting or iterations:
 ```bash
-python3 producer.py \
-  --topic iidr.CDC.TEST_ORDERS \
-  --num-messages 10000 \
-  --rate 500 \
-  --message-file template.json
+python3 producer.py --topic iidr.CDC.TEST_ORDERS --num-messages 10000 --rate 500 --message-file template.json
 ```
 
 ---

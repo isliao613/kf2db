@@ -2,7 +2,8 @@
   "name": "iidr-jdbc-sink-yb",
   "config": {
     "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
-    "tasks.max": "1",
+    "tasks.max": "32",
+    "batch.size": "5000",
     "topics": "iidr.CDC.TEST_ORDERS",
     "connection.url": "jdbc:yugabytedb://yugabyte:5433/yugabyte?load-balance=false",
     "connection.user": "yugabyte",
