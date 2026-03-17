@@ -1,5 +1,4 @@
 import psycopg2
-import pandas as pd
 from datetime import datetime
 
 def analyze():
@@ -16,41 +15,38 @@ def analyze():
         print(f"--- Calibration ---")
         print(f"Detected Clock Offset (DB - Host): {offset_ms:.2f} ms\n")
 
-        # 2. Analyze with Offset Correction
-        # Client -> Kafka (T1 to T2): Both come from Host-synced clocks usually
-        # Kafka -> DB (T2 to T4): T4 comes from DB clock, T2 from Connect (Host-synced)
-        # Total E2E (T1 to T4): T4 comes from DB clock, T1 from Host
-        
+        # 2. Define Latency Expressions
         t1_to_t2 = "EXTRACT(EPOCH FROM (kafka_at - created_at)) * 1000"
         t2_to_t4 = f"(EXTRACT(EPOCH FROM (db_at - kafka_at)) * 1000) - {offset_ms}"
         t1_to_t4 = f"(EXTRACT(EPOCH FROM (db_at - created_at)) * 1000) - {offset_ms}"
 
+        # 3. Fetch Summary Metrics
         summary_query = f"""
         SELECT 
-            MIN({t1_to_t2}) AS min_client_to_kafka,
-            AVG({t1_to_t2}) AS avg_client_to_kafka,
-            MAX({t1_to_t2}) AS max_client_to_kafka,
-            
-            MIN({t2_to_t4}) AS min_kafka_to_db,
-            AVG({t2_to_t4}) AS avg_kafka_to_db,
-            MAX({t2_to_t4}) AS max_kafka_to_db,
-            
-            MIN({t1_to_t4}) AS min_total_e2e,
-            AVG({t1_to_t4}) AS avg_total_e2e,
-            MAX({t1_to_t4}) AS max_total_e2e
+            MIN({t1_to_t2}), AVG({t1_to_t2}), MAX({t1_to_t2}),
+            MIN({t2_to_t4}), AVG({t2_to_t4}), MAX({t2_to_t4}),
+            MIN({t1_to_t4}), AVG({t1_to_t4}), MAX({t1_to_t4})
         FROM test_orders;
         """
         
-        summary = pd.read_sql(summary_query, conn)
-        
-        print("--- Detailed Latency Metrics (Adjusted) ---")
-        report = pd.DataFrame({
-            'Metric Segment': ['Client to Kafka', 'Kafka to DB', 'Total E2E'],
-            'Min (ms)': [summary['min_client_to_kafka'][0], summary['min_kafka_to_db'][0], summary['min_total_e2e'][0]],
-            'Avg (ms)': [summary['avg_client_to_kafka'][0], summary['avg_kafka_to_db'][0], summary['avg_total_e2e'][0]],
-            'Max (ms)': [summary['max_client_to_kafka'][0], summary['max_kafka_to_db'][0], summary['max_total_e2e'][0]]
-        })
-        print(report.to_string(index=False))
+        with conn.cursor() as cur:
+            cur.execute(summary_query)
+            row = cur.fetchone()
+            
+            if not row or row[0] is None:
+                print("No data found in test_orders table.")
+                return
+
+            metrics = [
+                ("Client to Kafka", row[0], row[1], row[2]),
+                ("Kafka to DB",     row[3], row[4], row[5]),
+                ("Total E2E",      row[6], row[7], row[8])
+            ]
+
+            print(f"{'Metric Segment':<20} | {'Min (ms)':>10} | {'Avg (ms)':>10} | {'Max (ms)':>10}")
+            print("-" * 60)
+            for label, min_val, avg_val, max_val in metrics:
+                print(f"{label:<20} | {min_val:>10.3f} | {avg_val:>10.3f} | {max_val:>10.3f}")
         
     except Exception as e:
         print(f"Error: {e}")
