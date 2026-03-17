@@ -5,11 +5,7 @@ import string
 import json
 import re
 from datetime import datetime
-from confluent_kafka import Producer
-
-def delivery_report(err, msg):
-    if err is not None:
-        pass
+from kafka import KafkaProducer
 
 def generate_random_string(size):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
@@ -55,13 +51,11 @@ class FastProducer:
                     self.key_tmpl = to_tmpl(full_data["key"], force_json=True)
                 
                 if "value" in full_data:
-                    # Keep value as JSON string for the producer
                     self.val_tmpl = to_tmpl(full_data["value"], force_json=True)
                 else:
                     self.val_tmpl = self.raw_template
                 
                 if "headers" in full_data:
-                    # Headers are NOT JSON serialized strings, they are raw strings
                     self.headers_tmpl = {k: to_tmpl(v, force_json=False) for k, v in full_data["headers"].items()}
         except json.JSONDecodeError:
             self.is_structured = False
@@ -71,29 +65,25 @@ class FastProducer:
         ts_str = now.strftime('%Y-%m-%d %H:%M:%S.%f') + '000000'
         idx = str(index)
         
-        key = self.key_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)
-        value = self.val_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)
+        key = self.key_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')
+        value = self.val_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')
         
         headers = []
         if self.headers_tmpl:
-            # We don't use str(v) here because v is already a string template with placeholders
-            headers = [(k, v.replace("{{id}}", idx).replace("{{timestamp}}", ts_str)) 
+            headers = [(k, v.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')) 
                        for k, v in self.headers_tmpl.items()]
         
         return key, value, headers
 
 def run_producer(args):
-    conf = {
-        'bootstrap.servers': args.bootstrap_servers,
-        'client.id': 'perf-producer',
-        'queue.buffering.max.messages': 2000000,
-        'batch.num.messages': args.batch_size,
-        'linger.ms': args.linger_ms,
-        'compression.type': 'lz4',
-        'acks': '1'
-    }
-
-    producer = Producer(conf)
+    producer = KafkaProducer(
+        bootstrap_servers=args.bootstrap_servers,
+        client_id='perf-producer',
+        batch_size=args.batch_size,
+        linger_ms=args.linger_ms,
+        compression_type='lz4',
+        acks=1
+    )
     fast_data = FastProducer(args)
     
     print(f"Starting production to topic '{args.topic}'...")
@@ -102,8 +92,7 @@ def run_producer(args):
         iter_start = time.time()
         for i in range(args.num_messages):
             key, value, headers = fast_data.get_data(i + (iteration * args.num_messages))
-            producer.produce(args.topic, key=key, value=value, headers=headers)
-            if i % 10000 == 0: producer.poll(0)
+            producer.send(args.topic, key=key, value=value, headers=headers)
         producer.flush()
         print(f"Iteration complete. Rate: {args.num_messages / (time.time() - iter_start):.2f} msg/sec")
 

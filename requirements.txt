@@ -1,2 +1,2 @@
-confluent-kafka
+kafka-python
 python-dotenv
