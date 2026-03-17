@@ -25,8 +25,8 @@
     "transforms.iidrToJdbc.table.name.filter": "TEST_ORDERS",
     "transforms.iidrToJdbc.table.name.case": "lower",
     "transforms.iidrToJdbc.field.name.case": "lower",
-    "transforms.iidrToJdbc.field.type.overrides": "created_at:timestamp,updated_at:timestamp,order_date:date,order_time:time,connector_received_at:timestamp",
+    "transforms.iidrToJdbc.field.type.overrides": "created_at:timestamp,updated_at:timestamp,order_date:date,order_time:time,kafka_at:timestamp",
     "transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
-    "transforms.insertTS.timestamp.field": "connector_received_at"
+    "transforms.insertTS.timestamp.field": "kafka_at"
   }
 }
