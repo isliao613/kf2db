@@ -83,7 +83,10 @@ def setup_connectors(num_tables):
         config["config"] = base_config["config"].copy()
         config["config"]["topics"] = topic_name
         config["config"]["table.name.format"] = table_name
+        config["config"]["tasks.max"] = "32"
         config["config"]["transforms.iidrToJdbc.table.name.filter"] = f"TEST_ORDERS_{i}"
+        
+        print(f"DEBUG: Submitting connector {config['name']} with tasks.max={config['config']['tasks.max']}")
         
         # Submit to Kafka Connect
         cmd = f"curl -s -X POST -H \"Content-Type: application/json\" --data '{json.dumps(config)}' http://localhost:8083/connectors"
