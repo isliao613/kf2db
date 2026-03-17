@@ -30,8 +30,13 @@ class FastProducer:
     def _prepare_templates(self):
         ID_VAL = "123456789"
         TS_VAL = "2099-01-01 00:00:00.000000000000"
+        KAFKA_AT_VAL = "2099-01-01 00:00:00.000000000001"
+        CONSUMER_AT_VAL = "2099-01-01 00:00:00.000000000002"
         
-        safe_json = self.raw_template.replace("{{id}}", ID_VAL).replace("{{timestamp}}", TS_VAL)
+        safe_json = self.raw_template.replace("{{id}}", ID_VAL) \
+                                    .replace("{{timestamp}}", TS_VAL) \
+                                    .replace("{{kafka_at}}", KAFKA_AT_VAL) \
+                                    .replace("{{consumer_at}}", CONSUMER_AT_VAL)
         
         try:
             full_data = json.loads(safe_json)
@@ -45,7 +50,10 @@ class FastProducer:
                         s = json.dumps(obj)
                     else:
                         s = str(obj)
-                    return s.replace(TS_VAL, '{{timestamp}}').replace(ID_VAL, '{{id}}')
+                    return s.replace(TS_VAL, '{{timestamp}}') \
+                            .replace(ID_VAL, '{{id}}') \
+                            .replace(KAFKA_AT_VAL, '{{kafka_at}}') \
+                            .replace(CONSUMER_AT_VAL, '{{consumer_at}}')
 
                 if "key" in full_data:
                     self.key_tmpl = to_tmpl(full_data["key"], force_json=True)
@@ -63,10 +71,16 @@ class FastProducer:
     def get_data(self, index):
         now = datetime.now()
         ts_str = now.strftime('%Y-%m-%d %H:%M:%S.%f') + '000000'
+        # We'll use the same timestamp for kafka_at and consumer_at to start with, 
+        # or we could make them slightly different.
+        kafka_at_str = ts_str
+        consumer_at_str = ts_str # In a real system, the consumer would set this.
         idx = str(index)
         
         key = self.key_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')
-        value = self.val_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')
+        value = self.val_tmpl.replace("{{id}}", idx).replace("{{timestamp}}", ts_str) \
+                           .replace("{{kafka_at}}", kafka_at_str) \
+                           .replace("{{consumer_at}}", consumer_at_str).encode('utf-8')
         
         headers = []
         if self.headers_tmpl:

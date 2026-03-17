@@ -1,0 +1,7 @@
+
+| Test Item | 進水速率 (Ingress Rate) | YB表 | Consumer 平行度 (Parallelism) | client -> kafka | kafka -> YB | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | 20000/s | 8 | 無trigger  |  五隻 proceduer分別記錄程式啟動時間和完成時間 | 五張表分別記錄: MIN(yb_at), MAZ(yb_at), MAX(yb_at)-MIN(yb_at), MAX(yb_at - kafka_at), AVG(yb_at - kafka_at), MAX(yb_at - consumer_at), AVG(yb_at - consumer_at), MAX(consumer_at - kafka_at), AVG(consumer_at - kafka_at)
+| 2 | 20000/s | 8 | 有trigger  |  五隻 proceduer分別記錄程式啟動時間和完成時間 | 五張表分別記錄: MIN(yb_at), MAZ(yb_at), MAX(yb_at)-MIN(yb_at), MAX(yb_at - kafka_at), AVG(yb_at - kafka_at), MAX(yb_at - consumer_at), AVG(yb_at - consumer_at), MAX(consumer_at - kafka_at), AVG(consumer_at - kafka_at)
+| 1 | 20000/s | 32 | 無trigger  |  五隻 proceduer分別記錄程式啟動時間和完成時間 | 五張表分別記錄: MIN(yb_at), MAZ(yb_at), MAX(yb_at)-MIN(yb_at), MAX(yb_at - kafka_at), AVG(yb_at - kafka_at), MAX(yb_at - consumer_at), AVG(yb_at - consumer_at), MAX(consumer_at - kafka_at), AVG(consumer_at - kafka_at)
+| 2 | 20000/s | 32 | 有trigger  |  五隻 proceduer分別記錄程式啟動時間和完成時間 | 五張表分別記錄: MIN(yb_at), MAZ(yb_at), MAX(yb_at)-MIN(yb_at), MAX(yb_at - kafka_at), AVG(yb_at - kafka_at), MAX(yb_at - consumer_at), AVG(yb_at - consumer_at), MAX(consumer_at - kafka_at), AVG(consumer_at - kafka_at)

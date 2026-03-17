@@ -21,7 +21,10 @@ CREATE TABLE test_orders (
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     order_date DATE,
-    order_time TIME
+    order_time TIME,
+    kafka_at TIMESTAMP,
+    consumer_at TIMESTAMP,
+    yb_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );"
 
 echo "Table 'test_orders' created successfully with lowercase columns."

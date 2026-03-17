@@ -1,0 +1,12 @@
+{
+  "ID": {{id}},
+  "ORDER_NAME": "order_{{id}}",
+  "AMOUNT": 250.50,
+  "STATUS": "COMPLETED",
+  "CREATED_AT": "{{timestamp}}",
+  "UPDATED_AT": "{{timestamp}}",
+  "ORDER_DATE": "2024-03-21",
+  "ORDER_TIME": "10:30:00",
+  "KAFKA_AT": "{{kafka_at}}",
+  "CONSUMER_AT": "{{consumer_at}}"
+}
