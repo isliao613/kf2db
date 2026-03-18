@@ -7,9 +7,29 @@ import re
 from datetime import datetime
 from kafka import KafkaProducer
 import multiprocessing
+import psycopg2
 
 def generate_random_string(size):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
+
+def truncate_table(args):
+    print(f"Truncating table 'test_orders' in database '{args.db_name}' at {args.db_host}:{args.db_port}...")
+    try:
+        conn = psycopg2.connect(
+            host=args.db_host,
+            port=args.db_port,
+            dbname=args.db_name,
+            user=args.db_user,
+            password=args.db_password
+        )
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE TABLE test_orders;")
+        conn.commit()
+        conn.close()
+        print("Truncate successful.")
+    except Exception as e:
+        print(f"Error truncating table: {e}")
+        exit(1)
 
 class FastProducer:
     def __init__(self, args):
@@ -117,11 +137,23 @@ def main():
     parser.add_argument("--message-file", type=str)
     parser.add_argument("--message", type=str)
     parser.add_argument("--message-size", type=int, default=1024)
+    
+    # Database arguments
+    parser.add_argument("--truncate", action="store_true", help="Truncate test_orders table before producing")
+    parser.add_argument("--db-host", default="localhost")
+    parser.add_argument("--db-port", type=int, default=5433)
+    parser.add_argument("--db-name", default="yugabyte")
+    parser.add_argument("--db-user", default="yugabyte")
+    parser.add_argument("--db-password", default="yugabyte")
+    
     args = parser.parse_args()
 
     total_messages = args.num_messages * args.iterations
     messages_per_process = total_messages // args.processes
     
+    if args.truncate:
+        truncate_table(args)
+
     print(f"Spawning {args.processes} processes to send {total_messages} messages in total...")
     
     processes = []
@@ -140,7 +172,8 @@ def main():
         p.join()
         
     total_elapsed = time.time() - start_time
-    print(f"All processes finished. Total time: {total_elapsed:.2f}s, Overall Rate: {total_messages / total_elapsed:.2f} msg/sec")
+    overall_rate = total_messages / total_elapsed
+    print(f"All processes finished. Total time: {total_elapsed:.2f}s, Overall Rate: {overall_rate:.2f} msg/sec")
 
 if __name__ == "__main__":
     main()

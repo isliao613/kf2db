@@ -39,7 +39,7 @@ connector-status:
 
 # Execution: performance tests
 run:
-	python3 producer.py --num-messages 100000 --processes 4 --message-file template.json
+	python3 producer.py --num-messages 100000 --processes 4 --message-file template.json --truncate
 
 run-small:
 	python3 producer.py --num-messages 10 --message-file template.json
