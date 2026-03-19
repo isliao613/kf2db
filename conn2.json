@@ -1,0 +1,27 @@
+{
+  "name": "iidr-sink-2",
+  "config": {
+    "connector.class": "io.confluent.connect.jdbc.JdbcSinkConnector",
+    "tasks.max": "1",
+    "topics": "iidr.CDC.TEST_ORDERS_2",
+    "connection.url": "jdbc:yugabytedb://yugabyte:5433/yugabyte?load-balance=false",
+    "connection.user": "yugabyte",
+    "connection.password": "yugabyte",
+    "dialect.name": "PostgreSqlDatabaseDialect",
+    "insert.mode": "upsert",
+    "pk.mode": "record_key",
+    "pk.fields": "id",
+    "table.name.format": "test_orders_2",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "transforms": "iidrToJdbc,insertTS",
+    "transforms.iidrToJdbc.type": "com.example.debezium.smt.IidrToJdbcSinkTransform",
+    "transforms.iidrToJdbc.table.name.case": "lower",
+    "transforms.iidrToJdbc.field.name.case": "lower",
+    "transforms.iidrToJdbc.field.type.overrides": "created_at:timestamp,updated_at:timestamp,order_date:date,order_time:time,kafka_at:timestamp",
+    "transforms.insertTS.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+    "transforms.insertTS.timestamp.field": "kafka_at"
+  }
+}

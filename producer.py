@@ -13,7 +13,17 @@ def generate_random_string(size):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=size))
 
 def truncate_table(args):
-    print(f"Truncating table 'test_orders' in database '{args.db_name}' at {args.db_host}:{args.db_port}...")
+    if args.table:
+        tables = args.table
+    else:
+        topics = args.topic if isinstance(args.topic, list) else [args.topic]
+        # Derive table names from topics: iidr.CDC.TABLE_NAME -> table_name
+        tables = [t.split('.')[-1].lower() for t in topics]
+    
+    # Deduplicate tables
+    tables = list(set(tables))
+    
+    print(f"Truncating tables {tables} in database '{args.db_name}' at {args.db_host}:{args.db_port}...")
     try:
         conn = psycopg2.connect(
             host=args.db_host,
@@ -23,12 +33,14 @@ def truncate_table(args):
             password=args.db_password
         )
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE test_orders;")
+            for table in tables:
+                print(f"  - Truncating {table}...")
+                cur.execute(f"TRUNCATE TABLE {table};")
         conn.commit()
         conn.close()
         print("Truncate successful.")
     except Exception as e:
-        print(f"Error truncating table: {e}")
+        print(f"Error truncating tables: {e}")
         exit(1)
 
 class FastProducer:
@@ -81,7 +93,7 @@ class FastProducer:
         except json.JSONDecodeError:
             self.is_structured = False
 
-    def get_data(self, index):
+    def get_data(self, index, topic_name=None):
         now = datetime.utcnow()
         ts_str = now.strftime('%Y-%m-%d %H:%M:%S.%f') + '000000'
         idx = str(index)
@@ -93,10 +105,23 @@ class FastProducer:
         if self.headers_tmpl:
             headers = [(k, v.replace("{{id}}", idx).replace("{{timestamp}}", ts_str).encode('utf-8')) 
                        for k, v in self.headers_tmpl.items()]
+            
+        # Dynamically set TableName header if topic_name is provided
+        if topic_name:
+            table_name_from_topic = topic_name.split('.')[-1].upper()
+            # Update or add TableName header
+            found = False
+            for i, (k, v) in enumerate(headers):
+                if k == 'TableName':
+                    headers[i] = (k, table_name_from_topic.encode('utf-8'))
+                    found = True
+                    break
+            if not found:
+                headers.append(('TableName', table_name_from_topic.encode('utf-8')))
         
         return key, value, headers
 
-def worker_run(args, process_id, start_index, num_messages):
+def worker_run(args, process_id, start_index, num_messages, total_messages_per_topic):
     producer = KafkaProducer(
         bootstrap_servers=args.bootstrap_servers,
         client_id=f'perf-producer-{process_id}',
@@ -106,12 +131,17 @@ def worker_run(args, process_id, start_index, num_messages):
         acks=1
     )
     fast_data = FastProducer(args)
+    topics = args.topic if isinstance(args.topic, list) else [args.topic]
     
-    print(f"[Process-{process_id}] Starting production of {num_messages} messages...")
+    print(f"[Process-{process_id}] Starting production of {num_messages} messages to {len(topics)} topics...")
     iter_start = time.time()
     for i in range(num_messages):
-        key, value, headers = fast_data.get_data(start_index + i)
-        producer.send(args.topic, key=key, value=value, headers=headers)
+        for topic_idx, t in enumerate(topics):
+            # Calculate a unique ID for this topic and message
+            # Topic 0 gets base IDs, Topic 1 gets offset by total_messages_per_topic, etc.
+            unique_id = (topic_idx * total_messages_per_topic) + start_index + i
+            key, value, headers = fast_data.get_data(unique_id, topic_name=t)
+            producer.send(t, key=key, value=value, headers=headers)
         
         # Simple rate limiting if specified
         if args.rate > 0:
@@ -122,12 +152,13 @@ def worker_run(args, process_id, start_index, num_messages):
                 
     producer.flush()
     elapsed = time.time() - iter_start
-    print(f"[Process-{process_id}] Complete. Rate: {num_messages / elapsed:.2f} msg/sec")
+    print(f"[Process-{process_id}] Complete. Total rate across {len(topics)} topics: {(num_messages * len(topics)) / elapsed:.2f} msg/sec")
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bootstrap-servers", default="localhost:9092")
-    parser.add_argument("--topic", default="iidr.CDC.TEST_ORDERS")
+    parser.add_argument("--topic", nargs='+', default=["iidr.CDC.TEST_ORDERS"])
+    parser.add_argument("--table", nargs='+', help="Explicit list of tables to truncate (overrides topic-based derivation)")
     parser.add_argument("--num-messages", type=int, default=100000)
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--processes", type=int, default=1)
@@ -139,7 +170,7 @@ def main():
     parser.add_argument("--message-size", type=int, default=1024)
     
     # Database arguments
-    parser.add_argument("--truncate", action="store_true", help="Truncate test_orders table before producing")
+    parser.add_argument("--truncate", action="store_true", help="Truncate tables derived from topics before producing")
     parser.add_argument("--db-host", default="localhost")
     parser.add_argument("--db-port", type=int, default=5433)
     parser.add_argument("--db-name", default="yugabyte")
@@ -148,13 +179,14 @@ def main():
     
     args = parser.parse_args()
 
-    total_messages = args.num_messages * args.iterations
-    messages_per_process = total_messages // args.processes
+    num_topics = len(args.topic)
+    total_messages_per_topic = args.num_messages * args.iterations
+    messages_per_process = total_messages_per_topic // args.processes
     
     if args.truncate:
         truncate_table(args)
 
-    print(f"Spawning {args.processes} processes to send {total_messages} messages in total...")
+    print(f"Spawning {args.processes} processes to send {total_messages_per_topic} messages per topic ({num_topics} topics total)...")
     
     processes = []
     start_time = time.time()
@@ -162,9 +194,9 @@ def main():
     for i in range(args.processes):
         start_idx = i * messages_per_process
         # The last process gets the remainder
-        count = messages_per_process if i < args.processes - 1 else total_messages - start_idx
+        count = messages_per_process if i < args.processes - 1 else total_messages_per_topic - start_idx
         
-        p = multiprocessing.Process(target=worker_run, args=(args, i, start_idx, count))
+        p = multiprocessing.Process(target=worker_run, args=(args, i, start_idx, count, total_messages_per_topic))
         p.start()
         processes.append(p)
         
@@ -172,8 +204,10 @@ def main():
         p.join()
         
     total_elapsed = time.time() - start_time
-    overall_rate = total_messages / total_elapsed
+    total_messages_sent = total_messages_per_topic * num_topics
+    overall_rate = total_messages_sent / total_elapsed
     print(f"All processes finished. Total time: {total_elapsed:.2f}s, Overall Rate: {overall_rate:.2f} msg/sec")
+
 
 if __name__ == "__main__":
     main()

@@ -55,19 +55,34 @@ make run
 ```
 
 ### Customizable Production
-Use `producer.py` for specific rate limiting or iterations:
+Use `producer.py` for specific rate limiting, multiple topics, or iterations:
 ```bash
-python3 producer.py --topic iidr.CDC.TEST_ORDERS --num-messages 10000 --rate 500 --message-file template.json
+python3 producer.py --topic iidr.CDC.TEST_ORDERS iidr.CDC.TEST_ORDERS_2 --num-messages 10000 --rate 500 --message-file template.json
 ```
+
+#### Non-Shared Pairing Logic
+The producer ensures that topic-table pairs do not share data by:
+1. **Unique ID Offsets**: Each topic is assigned a unique range of IDs. If you produce 100 messages for 2 topics, Topic 1 gets IDs 0-99 and Topic 2 gets IDs 100-199.
+2. **Dynamic Headers**: The producer automatically sets the `TableName` Kafka header to match the destination table derived from the topic name (e.g., `iidr.CDC.TEST_ORDERS_2` sets `TableName: TEST_ORDERS_2`).
+3. **Explicit Truncation**: Use `--table` to specify exactly which tables to truncate:
+   ```bash
+   python3 producer.py --topic TopicA --table TableX --truncate
+   ```
 
 ---
 
 ## 4. Verification
 
 ### Check Database Sync
-Count the rows in the YugabyteDB `test_orders` table:
+Count the rows in the primary table:
 ```bash
 make verify-db
+```
+
+### Check Multi-Topic Sync
+Count rows across multiple tables:
+```bash
+make verify-multi
 ```
 
 ---
